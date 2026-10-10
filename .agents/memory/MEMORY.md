@@ -1,0 +1,1 @@
+- [OpenAPI parameter generation](openapi-parameter-generation.md) — test codegen when combining path and query parameters; this workspace previously produced duplicate generated schemas.

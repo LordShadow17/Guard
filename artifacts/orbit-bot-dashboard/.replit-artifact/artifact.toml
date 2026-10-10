@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Orbit Bot"
+description = "A free Discord leveling and moderation bot with a web dashboard for server setup, XP rules, role rewards, leaderboards, and moderation activity."
+version = "1.0.0"
+id = "artifacts/orbit-bot-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23235
+
+[services.development]
+run = "pnpm --filter @workspace/orbit-bot-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/orbit-bot-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/orbit-bot-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23235"
+BASE_PATH = "/"

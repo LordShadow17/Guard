@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: API for the Orbit Bot dashboard and Discord bot
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Dashboard pairing and session management
+  - name: bot
+    description: Discord bot status
+  - name: guilds
+    description: Server configuration and analytics
+  - name: rewards
+    description: Level role rewards
 paths:
   /healthz:
     get:
@@ -24,6 +32,340 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/session:
+    get:
+      operationId: getAuthSession
+      tags: [auth]
+      summary: Get the current dashboard session
+      responses:
+        "200":
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+    delete:
+      operationId: logout
+      tags: [auth]
+      summary: End the current dashboard session
+      responses:
+        "200":
+          description: Session ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResult"
+  /auth/pair:
+    post:
+      operationId: loginWithPairCode
+      tags: [auth]
+      summary: Exchange a Discord-issued one-time pairing code for a dashboard session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PairCodeInput"
+      responses:
+        "200":
+          description: Dashboard session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "400":
+          description: Pairing code is invalid or expired
+  /bot/status:
+    get:
+      operationId: getBotStatus
+      tags: [bot]
+      summary: Get the bot's live connection status
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+  /guilds:
+    get:
+      operationId: getGuilds
+      tags: [guilds]
+      summary: List guilds available to the current dashboard session
+      responses:
+        "200":
+          description: Authorized guilds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guild"
+        "401":
+          description: Authentication required
+  /guilds/{guildId}/overview:
+    get:
+      operationId: getGuildOverview
+      tags: [guilds]
+      summary: Get leveling and moderation dashboard metrics
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guild dashboard overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildOverview"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+  /guilds/{guildId}/settings:
+    get:
+      operationId: getGuildSettings
+      tags: [guilds]
+      summary: Get leveling and moderation settings
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guild settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildSettings"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+    put:
+      operationId: updateGuildSettings
+      tags: [guilds]
+      summary: Update leveling and moderation settings
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuildSettingsInput"
+      responses:
+        "200":
+          description: Updated guild settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildSettings"
+        "400":
+          description: Invalid settings
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+  /guilds/{guildId}/leaderboard:
+    get:
+      operationId: getGuildLeaderboard
+      tags: [guilds]
+      summary: Get the guild XP leaderboard
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Top members by XP
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+  /guilds/{guildId}/activity:
+    get:
+      operationId: getGuildActivity
+      tags: [guilds]
+      summary: Get recent leveling and moderation activity
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recent guild activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+  /guilds/{guildId}/roles:
+    get:
+      operationId: getGuildRoles
+      tags: [guilds]
+      summary: List assignable Discord roles for level rewards
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Roles available to the bot
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GuildRole"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+  /guilds/{guildId}/rewards:
+    get:
+      operationId: getGuildRewards
+      tags: [rewards]
+      summary: List level role rewards
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Level role rewards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LevelReward"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+    post:
+      operationId: createGuildReward
+      tags: [rewards]
+      summary: Create a level role reward
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LevelRewardInput"
+      responses:
+        "201":
+          description: Reward created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelReward"
+        "400":
+          description: Invalid reward
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+  /guilds/{guildId}/rewards/{rewardId}:
+    patch:
+      operationId: updateGuildReward
+      tags: [rewards]
+      summary: Update a level role reward
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rewardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LevelRewardInput"
+      responses:
+        "200":
+          description: Updated reward
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelReward"
+        "400":
+          description: Invalid reward
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+        "404":
+          description: Reward not found
+    delete:
+      operationId: deleteGuildReward
+      tags: [rewards]
+      summary: Delete a level role reward
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rewardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reward deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "401":
+          description: Authentication required
+        "403":
+          description: Guild is not authorized for this session
+        "404":
+          description: Reward not found
 components:
   schemas:
     HealthStatus:
@@ -33,4 +375,231 @@ components:
           type: string
       required:
         - status
+    AuthSession:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        guilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Guild"
+      required: [authenticated, guilds]
+    LogoutResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required: [success]
+    PairCodeInput:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 6
+          maxLength: 12
+      required: [code]
+    BotStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        botTag:
+          type: ["string", "null"]
+        guildCount:
+          type: integer
+        uptimeSeconds:
+          type: ["integer", "null"]
+      required: [connected, botTag, guildCount, uptimeSeconds]
+    Guild:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        iconUrl:
+          type: ["string", "null"]
+      required: [id, name, iconUrl]
+    GuildOverview:
+      type: object
+      properties:
+        guildId:
+          type: string
+        guildName:
+          type: string
+        memberCount:
+          type: integer
+        trackedMembers:
+          type: integer
+        totalXp:
+          type: integer
+        messagesToday:
+          type: integer
+        moderationActions:
+          type: integer
+        levelingEnabled:
+          type: boolean
+        botOnline:
+          type: boolean
+      required: [guildId, guildName, memberCount, trackedMembers, totalXp, messagesToday, moderationActions, levelingEnabled, botOnline]
+    GuildSettings:
+      type: object
+      properties:
+        guildId:
+          type: string
+        levelingEnabled:
+          type: boolean
+        xpMin:
+          type: integer
+        xpMax:
+          type: integer
+        cooldownSeconds:
+          type: integer
+        reactionLevelingEnabled:
+          type: boolean
+        reactionXp:
+          type: integer
+        reactionCooldownSeconds:
+          type: integer
+        voiceLevelingEnabled:
+          type: boolean
+        voiceXpPerMinute:
+          type: integer
+        rankCardBackground:
+          type: string
+          enum: [forest, aurora, sunset, midnight, orchid]
+        announcementChannelId:
+          type: ["string", "null"]
+        announcementMessage:
+          type: string
+        modLogChannelId:
+          type: ["string", "null"]
+      required: [guildId, levelingEnabled, xpMin, xpMax, cooldownSeconds, reactionLevelingEnabled, reactionXp, reactionCooldownSeconds, voiceLevelingEnabled, voiceXpPerMinute, rankCardBackground, announcementChannelId, announcementMessage, modLogChannelId]
+    GuildSettingsInput:
+      type: object
+      properties:
+        levelingEnabled:
+          type: boolean
+        xpMin:
+          type: integer
+          minimum: 1
+          maximum: 100
+        xpMax:
+          type: integer
+          minimum: 1
+          maximum: 100
+        cooldownSeconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+        reactionLevelingEnabled:
+          type: boolean
+        reactionXp:
+          type: integer
+          minimum: 1
+          maximum: 100
+        reactionCooldownSeconds:
+          type: integer
+          minimum: 15
+          maximum: 3600
+        voiceLevelingEnabled:
+          type: boolean
+        voiceXpPerMinute:
+          type: integer
+          minimum: 1
+          maximum: 100
+        rankCardBackground:
+          type: string
+          enum: [forest, aurora, sunset, midnight, orchid]
+        announcementChannelId:
+          type: ["string", "null"]
+        announcementMessage:
+          type: string
+          maxLength: 500
+        modLogChannelId:
+          type: ["string", "null"]
+      required: [levelingEnabled, xpMin, xpMax, cooldownSeconds, reactionLevelingEnabled, reactionXp, reactionCooldownSeconds, voiceLevelingEnabled, voiceXpPerMinute, rankCardBackground, announcementChannelId, announcementMessage, modLogChannelId]
+    LeaderboardEntry:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        xp:
+          type: integer
+        level:
+          type: integer
+        messages:
+          type: integer
+        rank:
+          type: integer
+      required: [userId, username, avatarUrl, xp, level, messages, rank]
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [level_up, warn, timeout, kick, ban, clear]
+        actorTag:
+          type: string
+        targetTag:
+          type: string
+        details:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, actorTag, targetTag, details, createdAt]
+    GuildRole:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        position:
+          type: integer
+      required: [id, name, color, position]
+    LevelReward:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        level:
+          type: integer
+        roleId:
+          type: string
+        roleName:
+          type: string
+      required: [id, guildId, level, roleId, roleName]
+    LevelRewardInput:
+      type: object
+      properties:
+        level:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        roleId:
+          type: string
+        roleName:
+          type: string
+          minLength: 1
+          maxLength: 100
+      required: [level, roleId, roleName]
+    DeleteResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required: [success]
 
