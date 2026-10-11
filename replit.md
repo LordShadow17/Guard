@@ -36,12 +36,13 @@ A free, original Discord community bot for leveling, role rewards, leaderboards,
 - Message leveling uses sender metadata only; the bot does not request Discord's privileged Message Content intent.
 - Reaction XP has its own per-member cooldown and is awarded only for reactions to another member's message.
 - Voice XP is awarded per full minute only while at least two non-bot members share a non-AFK voice channel; self-deafened and server-deafened members do not earn it.
+- Members can set their own rank and level-up banners with `/profile-banner`; uploads are stored in App Storage, GIFs animate in level-up posts, and rank cards use a still frame.
 - Level thresholds follow a square XP curve: level N begins at N² × 100 XP.
 - The first release keeps features free and has no premium gating or billing.
 
 ## Product
 
-Servers can earn configurable XP from messages, reactions, and shared voice sessions; announce level-ups with tags; choose rank-card backgrounds; assign level rewards; view leaderboards and activity; and use slash commands for warnings, timeouts, kicks, bans, and bulk message clearing. Admins configure these features in the dashboard.
+Servers can earn configurable XP from messages, reactions, and shared voice sessions; announce level-ups with tags; choose rank-card backgrounds; assign level rewards; view leaderboards and activity; and use slash commands for warnings, timeouts, kicks, bans, bulk message clearing, and member-managed profile banners. Admins configure server features in the dashboard.
 
 ## User preferences
 

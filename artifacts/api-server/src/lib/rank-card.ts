@@ -16,6 +16,7 @@ type RankCardInput = {
   currentLevelXp: number;
   nextLevelXp: number;
   background: RankCardBackground;
+  customBanner?: Buffer;
 };
 
 const themes: Record<
@@ -72,11 +73,30 @@ export async function renderRankCard(input: RankCardInput): Promise<Buffer> {
   const canvas = createCanvas(width, height);
   const context = canvas.getContext("2d");
   const theme = themes[input.background] ?? themes.forest;
-  const background = context.createLinearGradient(0, 0, width, height);
-  background.addColorStop(0, theme.start);
-  background.addColorStop(1, theme.end);
-  context.fillStyle = background;
-  context.fillRect(0, 0, width, height);
+  if (input.customBanner) {
+    const image = await loadImage(input.customBanner);
+    const scale = Math.max(width / image.width, height / image.height);
+    const imageWidth = image.width * scale;
+    const imageHeight = image.height * scale;
+    context.drawImage(
+      image,
+      (width - imageWidth) / 2,
+      (height - imageHeight) / 2,
+      imageWidth,
+      imageHeight,
+    );
+    const overlay = context.createLinearGradient(0, 0, width, 0);
+    overlay.addColorStop(0, "rgba(8, 16, 18, 0.72)");
+    overlay.addColorStop(1, "rgba(8, 16, 18, 0.38)");
+    context.fillStyle = overlay;
+    context.fillRect(0, 0, width, height);
+  } else {
+    const background = context.createLinearGradient(0, 0, width, height);
+    background.addColorStop(0, theme.start);
+    background.addColorStop(1, theme.end);
+    context.fillStyle = background;
+    context.fillRect(0, 0, width, height);
+  }
 
   context.save();
   context.globalAlpha = 0.16;

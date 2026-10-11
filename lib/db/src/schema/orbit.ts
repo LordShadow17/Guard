@@ -49,6 +49,8 @@ export const guildMembersTable = pgTable(
     userId: text("user_id").notNull(),
     username: text("username").notNull(),
     avatarUrl: text("avatar_url"),
+    rankBannerPath: text("rank_banner_path"),
+    levelUpBannerPath: text("level_up_banner_path"),
     xp: integer("xp").notNull().default(0),
     messageCount: integer("message_count").notNull().default(0),
     reactionCount: integer("reaction_count").notNull().default(0),

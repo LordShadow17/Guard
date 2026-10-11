@@ -1,1 +1,2 @@
 - [OpenAPI parameter generation](openapi-parameter-generation.md) — test codegen when combining path and query parameters; this workspace previously produced duplicate generated schemas.
+- [GitHub source-control authentication](github-source-control-auth.md) — connection health may not reflect Git CLI push access; test the configured remote.

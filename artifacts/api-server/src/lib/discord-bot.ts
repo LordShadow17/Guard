@@ -29,6 +29,15 @@ import {
 import { logger } from "./logger";
 import { issuePairingCode } from "./dashboard-auth";
 import { renderRankCard } from "./rank-card";
+import {
+  deleteProfileBanner,
+  loadProfileBanner,
+  storeProfileBanner,
+} from "./profile-banner-storage";
+import {
+  BannerInputError,
+  prepareProfileBanner,
+} from "./profile-banners";
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const client = new Client({
@@ -58,6 +67,47 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("leaderboard")
       .setDescription("Show the top 10 members by XP"),
+    new SlashCommandBuilder()
+      .setName("profile-banner")
+      .setDescription("Set your own rank profile and level-up banners")
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName("set")
+          .setDescription("Upload a banner for your profile or level-ups")
+          .addStringOption((option) =>
+            option
+              .setName("target")
+              .setDescription("Choose where your banner appears")
+              .setRequired(true)
+              .addChoices(
+                { name: "Rank profile", value: "profile" },
+                { name: "Level-up announcement", value: "level-up" },
+                { name: "Both", value: "both" },
+              ),
+          )
+          .addAttachmentOption((option) =>
+            option
+              .setName("image")
+              .setDescription("PNG, JPG, WebP, or GIF under 5 MB")
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName("clear")
+          .setDescription("Remove one or both of your custom banners")
+          .addStringOption((option) =>
+            option
+              .setName("target")
+              .setDescription("Choose which banner to remove")
+              .setRequired(true)
+              .addChoices(
+                { name: "Rank profile", value: "profile" },
+                { name: "Level-up announcement", value: "level-up" },
+                { name: "Both", value: "both" },
+              ),
+          ),
+      ),
     new SlashCommandBuilder()
       .setName("warn")
       .setDescription("Record a warning for a member")
@@ -500,10 +550,38 @@ async function sendLevelUpAnnouncement({
     /\{([a-z_]+)\}/gi,
     (tag, key: string) => tags[key.toLowerCase()] ?? tag,
   );
+  let bannerFile: AttachmentBuilder | undefined;
+  const [member] = await db
+    .select({ levelUpBannerPath: guildMembersTable.levelUpBannerPath })
+    .from(guildMembersTable)
+    .where(
+      and(
+        eq(guildMembersTable.guildId, guild.id),
+        eq(guildMembersTable.userId, user.id),
+      ),
+    )
+    .limit(1);
+  if (member?.levelUpBannerPath) {
+    try {
+      const banner = await loadProfileBanner(member.levelUpBannerPath);
+      const extension = member.levelUpBannerPath.endsWith(".gif")
+        ? "gif"
+        : "png";
+      bannerFile = new AttachmentBuilder(banner, {
+        name: `level-up-banner.${extension}`,
+      });
+    } catch (error) {
+      logger.warn(
+        { guildId: guild.id, userId: user.id, error: errorMessage(error) },
+        "Could not load a member's level-up banner",
+      );
+    }
+  }
   await announcementChannel
     .send({
       content,
       allowedMentions: { users: [user.id] },
+      files: bannerFile ? [bannerFile] : [],
     })
     .catch((error: unknown) => {
       logger.warn(
@@ -628,6 +706,9 @@ async function handleCommand(
     case "leaderboard":
       await showLeaderboard(interaction);
       return;
+    case "profile-banner":
+      await handleProfileBanner(interaction);
+      return;
     case "warn":
       await moderate(interaction, "warn");
       return;
@@ -651,6 +732,193 @@ async function handleCommand(
   }
 }
 
+type BannerTarget = "profile" | "level-up" | "both";
+
+function nextBannerPaths(
+  target: BannerTarget,
+  current: {
+    profileBannerPath: string | null;
+    levelUpBannerPath: string | null;
+  },
+  replacementPath: string | null,
+): { profileBannerPath: string | null; levelUpBannerPath: string | null } {
+  return {
+    profileBannerPath:
+      target === "profile" || target === "both"
+        ? replacementPath
+        : current.profileBannerPath,
+    levelUpBannerPath:
+      target === "level-up" || target === "both"
+        ? replacementPath
+        : current.levelUpBannerPath,
+  };
+}
+
+async function removeUnusedBanners(
+  previousPaths: Array<string | null | undefined>,
+  nextPaths: Array<string | null | undefined>,
+  guildId: string,
+  userId: string,
+): Promise<void> {
+  const retained = new Set(nextPaths.filter((path): path is string => !!path));
+  const removed = new Set(previousPaths.filter((path): path is string => !!path));
+  for (const path of removed) {
+    if (retained.has(path)) continue;
+    try {
+      await deleteProfileBanner(path);
+    } catch (error) {
+      logger.warn(
+        { guildId, userId, error: errorMessage(error) },
+        "Could not remove an unused member banner",
+      );
+    }
+  }
+}
+
+async function handleProfileBanner(
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  const guild = interaction.guild!;
+  const user = interaction.user;
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const target = interaction.options.getString("target", true) as BannerTarget;
+    const [existing] = await db
+      .select()
+      .from(guildMembersTable)
+      .where(
+        and(
+          eq(guildMembersTable.guildId, guild.id),
+          eq(guildMembersTable.userId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (interaction.options.getSubcommand() === "clear") {
+      const targetHasBanner =
+        target === "both"
+          ? !!existing?.rankBannerPath || !!existing?.levelUpBannerPath
+          : target === "profile"
+            ? !!existing?.rankBannerPath
+            : !!existing?.levelUpBannerPath;
+      if (!targetHasBanner) {
+        await interaction.editReply(
+          target === "both"
+            ? "You don't have any custom banners to clear."
+            : `You don't have a ${target === "profile" ? "rank profile" : "level-up"} banner to clear.`,
+        );
+        return;
+      }
+      const next = nextBannerPaths(
+        target,
+        {
+          profileBannerPath: existing.rankBannerPath,
+          levelUpBannerPath: existing.levelUpBannerPath,
+        },
+        null,
+      );
+      await db
+        .update(guildMembersTable)
+        .set({ ...next, updatedAt: new Date() })
+        .where(
+          and(
+            eq(guildMembersTable.guildId, guild.id),
+            eq(guildMembersTable.userId, user.id),
+          ),
+        );
+      await removeUnusedBanners(
+        [existing.rankBannerPath, existing.levelUpBannerPath],
+        [next.profileBannerPath, next.levelUpBannerPath],
+        guild.id,
+        user.id,
+      );
+      await interaction.editReply(
+        target === "both"
+          ? "Your rank and level-up banners have been cleared."
+          : `Your ${target === "profile" ? "rank profile" : "level-up"} banner has been cleared.`,
+      );
+      return;
+    }
+
+    const prepared = await prepareProfileBanner(
+      interaction.options.getAttachment("image", true),
+    );
+    const uploadedPath = await storeProfileBanner(
+      prepared.bytes,
+      prepared.contentType,
+      prepared.extension,
+    );
+    const next = nextBannerPaths(
+      target,
+      {
+        profileBannerPath: existing?.rankBannerPath ?? null,
+        levelUpBannerPath: existing?.levelUpBannerPath ?? null,
+      },
+      uploadedPath,
+    );
+
+    try {
+      await db
+        .insert(guildMembersTable)
+        .values({
+          guildId: guild.id,
+          userId: user.id,
+          username: user.username,
+          avatarUrl: user.displayAvatarURL({ extension: "png", size: 128 }),
+          rankBannerPath: next.profileBannerPath,
+          levelUpBannerPath: next.levelUpBannerPath,
+        })
+        .onConflictDoUpdate({
+          target: [guildMembersTable.guildId, guildMembersTable.userId],
+          set: {
+            username: user.username,
+            avatarUrl: user.displayAvatarURL({ extension: "png", size: 128 }),
+            rankBannerPath: next.profileBannerPath,
+            levelUpBannerPath: next.levelUpBannerPath,
+            updatedAt: new Date(),
+          },
+        });
+    } catch (error) {
+      await deleteProfileBanner(uploadedPath).catch(() => undefined);
+      throw error;
+    }
+
+    await removeUnusedBanners(
+      [existing?.rankBannerPath, existing?.levelUpBannerPath],
+      [next.profileBannerPath, next.levelUpBannerPath],
+      guild.id,
+      user.id,
+    );
+    const targetLabel =
+      target === "both"
+        ? "rank and level-up banners"
+        : target === "profile"
+          ? "rank profile banner"
+          : "level-up banner";
+    const formatNote = prepared.animated
+      ? target === "profile"
+        ? " The rank card shows a still frame from the GIF."
+        : target === "level-up"
+          ? " GIF animation is preserved in level-up messages."
+          : " GIFs animate in level-up messages; rank cards show a still frame."
+      : "";
+    await interaction.editReply(
+      `Your ${targetLabel} ${target === "both" ? "have" : "has"} been updated.${formatNote}`,
+    );
+  } catch (error) {
+    if (error instanceof BannerInputError) {
+      await interaction.editReply(error.message);
+      return;
+    }
+    logger.error(
+      { guildId: guild.id, userId: user.id, error: errorMessage(error) },
+      "Could not update a member's banner",
+    );
+    await interaction.editReply("Couldn't update that banner. Please try again.");
+  }
+}
+
 async function showRank(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
@@ -671,6 +939,17 @@ async function showRank(
   const level = levelForXp(xp);
   const currentLevelXp = level ** 2 * 100;
   const nextLevelXp = (level + 1) ** 2 * 100;
+  let customBanner: Buffer | undefined;
+  if (member?.rankBannerPath) {
+    try {
+      customBanner = await loadProfileBanner(member.rankBannerPath);
+    } catch (error) {
+      logger.warn(
+        { guildId: guild.id, userId: user.id, error: errorMessage(error) },
+        "Could not load a member's rank banner",
+      );
+    }
+  }
   const [{ rank }, settings] = await Promise.all([
     db
       .select({ rank: count() })
@@ -703,6 +982,7 @@ async function showRank(
       | "sunset"
       | "midnight"
       | "orchid",
+    customBanner,
   });
   const attachment = new AttachmentBuilder(buffer, { name: "rank-card.png" });
   await interaction.reply({ files: [attachment] });
@@ -727,7 +1007,7 @@ async function showLeaderboard(
         .join("\n")
     : "No XP has been earned yet.";
   await interaction.reply({
-    content: `**XP leaderboard**\n${content}`,
+    content: `**XP leaderboard**\n${content}\n\nUse \`/rank\` with a member to view their banner profile, and \`/profile-banner set\` to customize your own.`,
     allowedMentions: { parse: [] },
   });
 }
